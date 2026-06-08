@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gêmeo Digital — Monitoramento de Gases (NH₃)</title>
+
+<!-- MQTT sobre WebSocket: o navegador assina o broker diretamente -->
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<!-- Gráfico de linha em tempo real -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --line:#272c36;
+    --txt:#e6e9ef; --muted:#8b93a3; --cyan:#39d0d8; --green:#3ddc84;
+    --amber:#ffb020; --red:#ff4d4f; --accent:#6c8cff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    background:radial-gradient(1200px 600px at 70% -10%, #1a1f2b 0%, var(--bg) 55%);
+    color:var(--txt); min-height:100vh; padding:28px 32px;
+  }
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+  .title h1{font-size:22px;font-weight:600;letter-spacing:.2px}
+  .title p{color:var(--muted);font-size:13px;margin-top:3px}
+  .conn{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--muted);transition:.3s}
+  .dot.on{background:var(--green);box-shadow:0 0 10px var(--green)}
+  .dot.off{background:var(--red);box-shadow:0 0 10px var(--red)}
+
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:18px}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:20px;position:relative;overflow:hidden;
+  }
+  .card .lbl{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.8px}
+  .card .val{font-size:42px;font-weight:700;margin-top:6px;line-height:1}
+  .card .unit{font-size:15px;color:var(--muted);font-weight:500}
+  .card .sub{color:var(--muted);font-size:12px;margin-top:8px}
+
+  .badge{display:inline-block;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600;margin-top:10px}
+  .badge.bom{background:rgba(61,220,132,.15);color:var(--green)}
+  .badge.elevado{background:rgba(108,140,255,.15);color:var(--accent)}
+  .badge.atencao{background:rgba(255,176,32,.15);color:var(--amber)}
+  .badge.critico{background:rgba(255,77,79,.18);color:var(--red)}
+  .badge.aguardando{background:rgba(139,147,163,.15);color:var(--muted)}
+
+  /* barra do exaustor */
+  .bar{height:12px;border-radius:8px;background:var(--panel2);margin-top:14px;overflow:hidden}
+  .bar > i{display:block;height:100%;width:0;border-radius:8px;
+    background:linear-gradient(90deg,var(--cyan),var(--accent));transition:width .4s}
+
+  .chart-wrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .chart-wrap h3{font-size:14px;font-weight:600;margin-bottom:14px;color:var(--muted)}
+  canvas{max-height:320px}
+
+  /* banner de alerta */
+  #alerta{
+    display:none;background:linear-gradient(90deg,rgba(255,77,79,.25),rgba(255,77,79,.05));
+    border:1px solid var(--red);border-radius:12px;padding:14px 18px;margin-bottom:18px;
+    color:#ffd6d6;font-weight:600;align-items:center;gap:10px;
+    animation:pulse 1.1s infinite;
+  }
+  #alerta.show{display:flex}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.65}}
+
+  footer{color:var(--muted);font-size:12px;margin-top:22px;text-align:center}
+  code{background:var(--panel2);padding:2px 6px;border-radius:5px;color:var(--cyan)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    <h1>🐔 Gêmeo Digital — Monitoramento de Gases</h1>
+    <p>Amônia (NH₃) · Sensor MQ-135 (ESP32/Wokwi) → MQTT → Controle do Exaustor</p>
+  </div>
+  <div class="conn">
+    <span class="dot" id="connDot"></span>
+    <span id="connTxt">conectando ao broker…</span>
+  </div>
+</header>
+
+<div id="alerta">⚠️ ALERTA: Amônia em nível CRÍTICO (≥ 25 ppm) — exaustor em potência máxima!</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="lbl">Amônia medida</div>
+    <div class="val"><span id="ppm">--</span><span class="unit"> ppm</span></div>
+    <div class="sub">alvo: &lt; <span id="alvo">10</span> ppm · crítico: <span id="crit">25</span> ppm</div>
+    <span class="badge aguardando" id="statusBadge">AGUARDANDO</span>
+  </div>
+
+  <div class="card">
+    <div class="lbl">Exaustor (atuador)</div>
+    <div class="val"><span id="exaustor">--</span><span class="unit"> %</span></div>
+    <div class="sub">potência de ventilação calculada pelo gêmeo</div>
+    <div class="bar"><i id="exaustorBar"></i></div>
+  </div>
+
+  <div class="card">
+    <div class="lbl">Estado do ambiente</div>
+    <div class="val" id="estadoIcon" style="font-size:40px">🟢</div>
+    <div class="sub" id="estadoTxt">aguardando leitura…</div>
+  </div>
+
+  <div class="card">
+    <div class="lbl">Última atualização</div>
+    <div class="val" style="font-size:24px;margin-top:14px" id="ts">--:--:--</div>
+    <div class="sub">mensagens recebidas: <span id="count">0</span></div>
+  </div>
+</div>
+
+<div class="chart-wrap">
+  <h3>NH₃ (ppm) × Potência do exaustor (%) — tempo real</h3>
+  <canvas id="chart"></canvas>
+</div>
+
+<footer>
+  Broker: <code>wss://broker.hivemq.com:8884/mqtt</code> ·
+  Tópicos: <code>granja/status/gas/#</code> · <code>granja/sensor/gas/#</code>
+</footer>
+
+<script>
+// ── Configuração ────────────────────────────────────────────────
+const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+const TOPIC_STATUS = "granja/status/gas/#";   // vem do gas_control.py
+const TOPIC_SENSOR = "granja/sensor/gas/#";   // bruto, fallback p/ ppm
+const NH3_CRITICO  = 25;
+const MAX_PONTOS   = 40;
+
+let count = 0;
+
+// ── Gráfico ─────────────────────────────────────────────────────
+const ctx = document.getElementById('chart').getContext('2d');
+const chart = new Chart(ctx, {
+  type:'line',
+  data:{ labels:[], datasets:[
+    { label:'NH₃ (ppm)', data:[], borderColor:'#39d0d8', backgroundColor:'rgba(57,208,216,.12)',
+      tension:.35, fill:true, pointRadius:0, borderWidth:2, yAxisID:'y' },
+    { label:'Exaustor (%)', data:[], borderColor:'#6c8cff', backgroundColor:'rgba(108,140,255,.08)',
+      tension:.35, fill:false, pointRadius:0, borderWidth:2, yAxisID:'y1' },
+    { label:'Limite crítico', data:[], borderColor:'#ff4d4f', borderDash:[6,6],
+      pointRadius:0, borderWidth:1.5, yAxisID:'y' }
+  ]},
+  options:{
+    responsive:true, animation:false,
+    plugins:{ legend:{ labels:{ color:'#8b93a3' } } },
+    scales:{
+      x:{ ticks:{ color:'#5b6271', maxTicksLimit:8 }, grid:{ color:'#222630' } },
+      y:{ position:'left', min:0, suggestedMax:50, title:{display:true,text:'ppm',color:'#39d0d8'},
+          ticks:{ color:'#5b6271' }, grid:{ color:'#222630' } },
+      y1:{ position:'right', min:0, max:100, title:{display:true,text:'%',color:'#6c8cff'},
+          ticks:{ color:'#5b6271' }, grid:{ drawOnChartArea:false } }
+    }
+  }
+});
+
+function pushPonto(ppm, exaustor){
+  const t = new Date().toLocaleTimeString('pt-BR');
+  chart.data.labels.push(t);
+  chart.data.datasets[0].data.push(ppm);
+  chart.data.datasets[1].data.push(exaustor);
+  chart.data.datasets[2].data.push(NH3_CRITICO);
+  if (chart.data.labels.length > MAX_PONTOS){
+    chart.data.labels.shift();
+    chart.data.datasets.forEach(d => d.data.shift());
+  }
+  chart.update();
+}
+
+// ── Renderização dos cards ──────────────────────────────────────
+const ESTADOS = {
+  bom:      { icon:'🟢', txt:'Ambiente saudável' },
+  elevado:  { icon:'🔵', txt:'NH₃ elevado — ventilando' },
+  atencao:  { icon:'🟡', txt:'Atenção: amônia alta' },
+  critico:  { icon:'🔴', txt:'CRÍTICO: risco respiratório' },
+};
+
+// Atualização leve: mensagens CRUAS do sensor só mexem no número de ppm,
+// sem tocar no badge/estado (que pertencem ao status do cérebro). Evita flicker.
+function renderSensor(s){
+  if (s.ppm != null) document.getElementById('ppm').textContent = Number(s.ppm).toFixed(1);
+}
+
+function render(s){
+  if (s.ppm != null)        document.getElementById('ppm').textContent = Number(s.ppm).toFixed(1);
+  if (s.exaustor_pct != null){
+    document.getElementById('exaustor').textContent = Math.round(s.exaustor_pct);
+    document.getElementById('exaustorBar').style.width = Math.min(100,s.exaustor_pct) + '%';
+  }
+  if (s.nh3_alvo != null)    document.getElementById('alvo').textContent = s.nh3_alvo;
+  if (s.nh3_critico != null) document.getElementById('crit').textContent = s.nh3_critico;
+
+  const st = (s.status || 'aguardando').toLowerCase();
+  const badge = document.getElementById('statusBadge');
+  badge.className = 'badge ' + (ESTADOS[st] ? st : 'aguardando');
+  badge.textContent = st.toUpperCase();
+
+  const meta = ESTADOS[st] || { icon:'⚪', txt:'aguardando…' };
+  document.getElementById('estadoIcon').textContent = meta.icon;
+  document.getElementById('estadoTxt').textContent = meta.txt;
+
+  document.getElementById('ts').textContent = new Date().toLocaleTimeString('pt-BR');
+  document.getElementById('count').textContent = ++count;
+
+  document.getElementById('alerta').classList.toggle('show', !!s.alerta);
+
+  if (s.ppm != null && s.exaustor_pct != null) pushPonto(Number(s.ppm), Number(s.exaustor_pct));
+}
+
+// ── Conexão MQTT ────────────────────────────────────────────────
+const dot = document.getElementById('connDot');
+const txt = document.getElementById('connTxt');
+const client = mqtt.connect(BROKER, { clientId:'dashboard-'+Math.random().toString(16).slice(2) });
+
+client.on('connect', () => {
+  dot.className = 'dot on'; txt.textContent = 'conectado · ouvindo a granja';
+  client.subscribe(TOPIC_STATUS);
+  client.subscribe(TOPIC_SENSOR);
+});
+client.on('reconnect', () => { dot.className='dot'; txt.textContent='reconectando…'; });
+client.on('close',     () => { dot.className='dot off'; txt.textContent='desconectado'; });
+client.on('error', e   => { dot.className='dot off'; txt.textContent='erro: '+e.message; });
+
+client.on('message', (topic, payload) => {
+  let data; try { data = JSON.parse(payload.toString()); } catch(_) {
+    data = { ppm: parseFloat(payload.toString()) };
+  }
+  // status/gas/# = estado completo do cérebro → render completo (cards, gráfico, alerta)
+  // sensor/gas/# = leitura crua do ESP32 → só atualiza o número de ppm
+  if (topic.startsWith('granja/status/')) render(data);
+  else renderSensor(data);
+});
+</script>
+</body>
+</html>

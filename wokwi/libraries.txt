@@ -1,0 +1,4 @@
+# Bibliotecas usadas pelo sketch (Wokwi instala automaticamente).
+# Cole também no "Library Manager" do Wokwi se necessário.
+PubSubClient
+ArduinoJson
