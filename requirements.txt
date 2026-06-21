@@ -1,0 +1,3 @@
+# Dependências do Gêmeo Digital (ecossistema interno)
+paho-mqtt>=2.0      # usado apenas pelo MqttBus (broker real / hardware Wokwi)
+pytest>=8.0         # testes
