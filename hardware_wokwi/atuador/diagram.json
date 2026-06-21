@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "author": "Igor - Gemeo Digital Granja - Atuador",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp32", "top": -4.9, "left": 4.6, "attrs": {} },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 80.75,
+      "left": 172.8,
+      "attrs": { "value": "220" }
+    },
+    { "type": "wokwi-led", "id": "led1", "top": 6, "left": 243.8, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-servo", "id": "servo1", "top": -117.2, "left": -38.4, "attrs": {} },
+    {
+      "type": "wokwi-led",
+      "id": "led2",
+      "top": -80.4,
+      "left": -111.4,
+      "attrs": { "color": "red" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": 80.2,
+      "left": -116.05,
+      "rotate": 270,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    [ "esp32:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp32:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp32:D5", "r1:1", "orange", [ "h30", "v80" ] ],
+    [ "r1:2", "led1:A", "orange", [] ],
+    [ "led1:C", "esp32:GND.1", "black", [ "h0", "v96", "h-300" ] ],
+    [ "servo1:GND", "esp32:GND.2", "black", [ "h-28.8", "v211.3" ] ],
+    [ "servo1:V+", "esp32:3V3", "red", [ "h-19.2", "v28.9", "h172.8", "v182.4" ] ],
+    [ "servo1:PWM", "esp32:D13", "gold", [ "h-9.6", "v182.8" ] ],
+    [ "led2:C", "esp32:GND.2", "black", [ "v0" ] ],
+    [ "led2:A", "r2:2", "green", [ "v0" ] ],
+    [ "r2:1", "esp32:D12", "green", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}

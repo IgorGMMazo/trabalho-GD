@@ -1,1 +1,8 @@
-paho-mqtt>=2.0
+# ── Gêmeo Digital — Granja Avícola ──────────────────────────────
+# O simulador (run_twin.py) e o dashboard rodam SÓ com a biblioteca
+# padrão do Python 3.8+ — sem dependências, sem internet, sem broker.
+#
+# Os pacotes abaixo são OPCIONAIS:
+pytest>=7.0          # testes automatizados (python -m pytest)
+python-pptx>=0.6.21  # apenas para regenerar os slides (slides/gerar_slides.py)
+paho-mqtt>=2.0       # apenas se for conectar no hardware Wokwi real via MQTT

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gêmeo Digital — Granja Avícola</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#121b2e; --panel2:#0e1626; --line:#1e2c45;
+    --txt:#e6edf7; --muted:#8aa0c0; --accent:#38bdf8;
+    --verde:#22c55e; --amarelo:#eab308; --laranja:#f97316; --vermelho:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:
+      radial-gradient(1200px 600px at 70% -10%,#15233d,transparent),var(--bg);
+      color:var(--txt);padding:14px 18px 40px}
+  h1{font-size:20px;margin:0;letter-spacing:.3px}
+  .sub{color:var(--muted);font-size:12.5px}
+  .topbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+      border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px}
+  .spacer{flex:1}
+  .pill{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+      padding:6px 12px;font-size:12.5px;color:var(--muted)}
+  .pill b{color:var(--txt)}
+  select,button{background:var(--panel);color:var(--txt);border:1px solid var(--line);
+      border-radius:8px;padding:7px 11px;font-size:13px;cursor:pointer}
+  button:hover,select:hover{border-color:var(--accent)}
+  button.on{border-color:var(--accent);color:var(--accent)}
+  .grid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2));
+      border:1px solid var(--line);border-radius:14px;padding:14px}
+  .panel h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;
+      letter-spacing:1px;color:var(--muted)}
+  /* ---- Galpão SVG ---- */
+  .galpao-wrap{position:relative}
+  #galpao{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:50%}
+  /* ---- Atuadores bars ---- */
+  .atuadores{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+  .atu{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px}
+  .atu .nome{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .atu .val{font-size:20px;font-weight:700;margin:2px 0}
+  .bar{height:7px;background:#0a1120;border-radius:6px;overflow:hidden;margin-top:5px}
+  .bar > i{display:block;height:100%;border-radius:6px;transition:width .4s ease,background .4s}
+  /* ---- Eixos ---- */
+  .eixos{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));
+      border:1px solid var(--line);border-radius:14px;padding:14px;position:relative;overflow:hidden}
+  .card .icon{font-size:22px}
+  .card .titulo{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .card .big{font-size:34px;font-weight:800;margin:4px 0 0;line-height:1}
+  .card .unit{font-size:14px;color:var(--muted);font-weight:500}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;
+      font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#06101f}
+  .meta{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.45}
+  .explic{font-size:12.5px;margin-top:9px;color:#cdd9ee;background:#0a1322;
+      border-left:3px solid var(--line);padding:8px 10px;border-radius:0 8px 8px 0;min-height:54px}
+  .statusline{position:absolute;left:0;top:0;width:5px;height:100%}
+  /* ---- Supervisor ---- */
+  .modo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
+  .reason{font-size:12.5px;line-height:1.5;padding:9px 11px;border-radius:9px;margin-top:8px}
+  .reason.conf{background:#2a1414;border:1px solid #5b2330;color:#ffd9d9}
+  .reason.sin{background:#0f2418;border:1px solid #1f5b39;color:#c8f7d8}
+  .reason.ok{background:#0e1626;border:1px solid var(--line);color:var(--muted)}
+  .alerta-banner{background:linear-gradient(90deg,#7f1d1d,#b91c1c);color:#fff;
+      border-radius:12px;padding:11px 16px;font-weight:700;margin-bottom:14px;
+      display:none;align-items:center;gap:10px;animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.7}}
+  /* ---- Charts ---- */
+  .charts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+  canvas{width:100%;height:150px;display:block}
+  .chartlabel{font-size:11.5px;color:var(--muted);margin-bottom:6px}
+  /* fan animation */
+  #fanBlades{transform-origin:center;transform-box:fill-box}
+  .heatwave{opacity:0}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <h1>🐔 Gêmeo Digital — Granja Avícola</h1>
+      <div class="sub">Ambiente reativo de 3 eixos (luz · clima · gases) com supervisor de bem-estar animal</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill">Fase: <b id="faseNome">—</b></div>
+    <select id="selFaixa" title="Fase de vida das aves">
+      <option value="1">1 · Chegada (pintinhos)</option>
+      <option value="2" selected>2 · Crescimento</option>
+      <option value="3">3 · Final (abate)</option>
+    </select>
+    <select id="selCenario" title="Cenário"></select>
+    <button id="btnProx" title="Próximo cenário">Próximo ▶</button>
+    <button id="btnAuto" class="on" title="Ciclo automático">Auto ⟳</button>
+    <div class="pill">t = <b id="clock">0</b>s</div>
+  </div>
+
+  <div class="alerta-banner" id="alerta">⚠️ <span id="alertaTxt">ALERTA</span></div>
+
+  <div class="grid">
+    <!-- ESQUERDA: galpão + atuadores -->
+    <div class="panel galpao-wrap">
+      <h2>Galpão (ambiente físico compartilhado)</h2>
+      <svg id="galpao" viewBox="0 0 640 300" preserveAspectRatio="xMidYMid meet">
+        <!-- céu/condição externa -->
+        <defs>
+          <radialGradient id="lampGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#fff4c2" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#fff4c2" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="heatGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#ff5a2c" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#ff5a2c" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <!-- piso/cama -->
+        <rect x="20" y="40" width="600" height="230" rx="10" fill="#0f1a2c" stroke="#22324e"/>
+        <rect x="20" y="232" width="600" height="38" rx="0" fill="#1a2336"/>
+        <text x="30" y="256" font-size="11" fill="#6b7e9e">cama (litter)</text>
+
+        <!-- nuvem de amônia (NH3) -->
+        <g id="nh3Cloud"></g>
+
+        <!-- LÂMPADA -->
+        <g id="lamp">
+          <circle id="lampHalo" cx="150" cy="95" r="46" fill="url(#lampGlow)" opacity="0"/>
+          <line x1="150" y1="40" x2="150" y2="74" stroke="#43536f" stroke-width="3"/>
+          <circle cx="150" cy="84" r="12" fill="#fde68a" id="lampBulb"/>
+          <text x="150" y="135" font-size="11" fill="#9fb2d4" text-anchor="middle">💡 Lâmpada</text>
+        </g>
+
+        <!-- AQUECEDOR -->
+        <g id="heater">
+          <circle id="heatHalo" cx="320" cy="120" r="50" fill="url(#heatGlow)" opacity="0"/>
+          <rect x="300" y="150" width="40" height="40" rx="6" fill="#3a2418" stroke="#7c3a1d"/>
+          <line x1="307" y1="158" x2="307" y2="182" stroke="#ff6a3d" stroke-width="3" id="coil1"/>
+          <line x1="320" y1="158" x2="320" y2="182" stroke="#ff6a3d" stroke-width="3" id="coil2"/>
+          <line x1="333" y1="158" x2="333" y2="182" stroke="#ff6a3d" stroke-width="3" id="coil3"/>
+          <text x="320" y="208" font-size="11" fill="#9fb2d4" text-anchor="middle">🔥 Aquecedor</text>
+        </g>
+
+        <!-- EXAUSTOR (ventilador) -->
+        <g id="fan" transform="translate(540,110)">
+          <circle r="42" fill="#0c1526" stroke="#2a3a58" stroke-width="3"/>
+          <g id="fanBlades">
+            <path d="M0,0 C 14,-30 30,-14 0,0" fill="#5b7bb5"/>
+            <path d="M0,0 C 30,14 14,30 0,0" fill="#5b7bb5"/>
+            <path d="M0,0 C -14,30 -30,14 0,0" fill="#5b7bb5"/>
+            <path d="M0,0 C -30,-14 -14,-30 0,0" fill="#5b7bb5"/>
+          </g>
+          <circle r="6" fill="#9fb2d4"/>
+          <text y="62" font-size="11" fill="#9fb2d4" text-anchor="middle">🌀 Exaustor</text>
+        </g>
+
+        <!-- CORTINA (servo) -->
+        <g id="curtain">
+          <rect x="455" y="44" width="12" height="120" fill="#243651" stroke="#33486b"/>
+          <rect id="curtainPanel" x="455" y="44" width="12" height="120" fill="#3b5a86"/>
+          <text x="461" y="178" font-size="11" fill="#9fb2d4" text-anchor="middle">🪟 Cortina</text>
+        </g>
+
+        <!-- aves -->
+        <text x="70" y="226" font-size="26" id="birds">🐔🐔🐤🐔</text>
+      </svg>
+
+      <div class="atuadores">
+        <div class="atu"><div class="nome">🌀 Exaustor</div><div class="val" id="vExa">0%</div>
+          <div class="bar"><i id="bExa" style="width:0%;background:var(--accent)"></i></div></div>
+        <div class="atu"><div class="nome">🔥 Aquecedor</div><div class="val" id="vAqu">0%</div>
+          <div class="bar"><i id="bAqu" style="width:0%;background:var(--laranja)"></i></div></div>
+        <div class="atu"><div class="nome">💡 Lâmpada</div><div class="val" id="vLamp">0%</div>
+          <div class="bar"><i id="bLamp" style="width:0%;background:var(--amarelo)"></i></div></div>
+        <div class="atu"><div class="nome">🪟 Cortina</div><div class="val" id="vCor">0%</div>
+          <div class="bar"><i id="bCor" style="width:0%;background:#60a5fa"></i></div></div>
+      </div>
+    </div>
+
+    <!-- DIREITA: cenário + supervisor -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="panel">
+        <h2>Cenário em curso</h2>
+        <div style="font-size:16px;font-weight:700" id="cenNome">—</div>
+        <div class="meta" id="cenDesc">—</div>
+        <div class="legend" style="margin-top:10px">
+          <span>🌡️ Ext: <b id="extTemp" style="color:var(--txt)">—</b>°C</span>
+          <span>💧 UR ext: <b id="extUmid" style="color:var(--txt)">—</b>%</span>
+          <span>🪶 Cama: <b id="extCama" style="color:var(--txt)">—</b></span>
+        </div>
+      </div>
+
+      <div class="panel" style="flex:1">
+        <h2>Supervisor — arbitragem de atuadores</h2>
+        <div class="modo">Regime térmico: <span id="modoTermico">—</span></div>
+        <div class="meta">Prioridade de bem-estar: <b>1º térmico letal · 2º amônia tóxica · 3º luz</b></div>
+        <div id="reasons" style="margin-top:6px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EIXOS -->
+  <div class="eixos">
+    <div class="card" id="cardLuz">
+      <div class="statusline" id="slLuz"></div>
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div><span class="icon">💡</span> <span class="titulo">Luz</span></div>
+        <span class="badge" id="bdLuz">—</span>
+      </div>
+      <div class="big"><span id="luxVal">—</span> <span class="unit">lux</span></div>
+      <div class="meta" id="luxMeta">—</div>
+      <div class="explic" id="luxExpl">—</div>
+    </div>
+    <div class="card" id="cardClima">
+      <div class="statusline" id="slClima"></div>
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div><span class="icon">🌡️</span> <span class="titulo">Clima</span></div>
+        <span class="badge" id="bdClima">—</span>
+      </div>
+      <div class="big"><span id="tempVal">—</span> <span class="unit">°C</span></div>
+      <div class="meta" id="climaMeta">—</div>
+      <div class="explic" id="climaExpl">—</div>
+    </div>
+    <div class="card" id="cardGas">
+      <div class="statusline" id="slGas"></div>
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div><span class="icon">🟢</span> <span class="titulo">Gases · NH₃</span></div>
+        <span class="badge" id="bdGas">—</span>
+      </div>
+      <div class="big"><span id="nh3Val">—</span> <span class="unit">ppm</span></div>
+      <div class="meta" id="gasMeta">—</div>
+      <div class="explic" id="gasExpl">—</div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="charts">
+    <div class="panel"><div class="chartlabel">Luz — lux (linha tracejada = alvo)</div><canvas id="chLuz"></canvas></div>
+    <div class="panel"><div class="chartlabel">Clima — temperatura (°C) e ITU</div><canvas id="chClima"></canvas></div>
+    <div class="panel"><div class="chartlabel">Gases — NH₃ (ppm) · limiares 10/20/25</div><canvas id="chGas"></canvas></div>
+  </div>
+
+<script>
+const COR = {verde:'#22c55e',amarelo:'#eab308',laranja:'#f97316',vermelho:'#ef4444'};
+const $ = id => document.getElementById(id);
+let fanAngle = 0, fanSpeed = 0;
+
+// ---- controles ----
+fetch('/cenarios').then(r=>r.json()).then(list=>{
+  const s=$('selCenario'); s.innerHTML='';
+  list.forEach(c=>{const o=document.createElement('option');o.value=c.indice;o.textContent=c.nome;s.appendChild(o);});
+});
+$('selFaixa').onchange = e => cmd('faixa', e.target.value);
+$('selCenario').onchange = e => { cmd('cenario', e.target.value); $('btnAuto').classList.remove('on'); };
+$('btnProx').onclick = () => { cmd('proximo'); $('btnAuto').classList.remove('on'); };
+$('btnAuto').onclick = () => { cmd('auto'); $('btnAuto').classList.add('on'); };
+function cmd(acao, valor){ fetch(`/cmd?acao=${acao}${valor!==undefined?`&valor=${valor}`:''}`); }
+
+// ---- animação do ventilador (independe do stream) ----
+(function spin(){ fanAngle=(fanAngle+fanSpeed)%360;
+  const b=$('fanBlades'); if(b) b.setAttribute('transform',`rotate(${fanAngle})`);
+  requestAnimationFrame(spin); })();
+
+// ---- stream SSE ----
+const es = new EventSource('/stream');
+es.onmessage = ev => { try{ render(JSON.parse(ev.data)); }catch(e){ console.error(e);} };
+
+function badge(el, saude, texto){
+  el.textContent = texto; el.style.background = COR[saude] || '#888';
+}
+
+function render(s){
+  $('clock').textContent = s.t.toFixed(0);
+  $('faseNome').textContent = s.fase_nome;
+  $('selFaixa').value = s.faixa;
+
+  // cenário
+  $('cenNome').textContent = s.cenario.nome;
+  $('cenDesc').textContent = s.cenario.descricao;
+  $('extTemp').textContent = s.cenario.temp_ext;
+  $('extUmid').textContent = s.cenario.umid_ext;
+  $('extCama').textContent = s.cenario.sujeira_cama.toFixed(2);
+  if(s.cenario.auto) $('btnAuto').classList.add('on'); else $('btnAuto').classList.remove('on');
+  if(document.activeElement!==$('selCenario')) $('selCenario').value = s.cenario.indice;
+
+  // eixos
+  const L=s.eixos.luz, C=s.eixos.clima, G=s.eixos.gas;
+  $('luxVal').textContent = L.lux.toFixed(1);
+  $('luxMeta').innerHTML = `alvo <b>${L.alvo}</b> lux (faixa ${L.min}–${L.max}) · natural ${L.lux_natural} + lâmpada ${L.lux_lampada}`;
+  $('luxExpl').textContent = L.explicacao;
+  badge($('bdLuz'), L.saude, L.status.replace(/_/g,' '));
+  $('slLuz').style.background = COR[L.saude];
+
+  $('tempVal').textContent = C.temp.toFixed(1);
+  $('climaMeta').innerHTML = `banda <b>${C.temp_min}–${C.temp_max}°C</b> · UR ${C.umid}% · ITU ${C.itu} (conforto&lt;${C.itu_conforto}, crítico&gt;${C.itu_critico})`;
+  $('climaExpl').textContent = C.explicacao;
+  badge($('bdClima'), C.saude, C.status.replace(/_/g,' '));
+  $('slClima').style.background = COR[C.saude];
+
+  $('nh3Val').textContent = G.ppm.toFixed(1);
+  $('gasMeta').innerHTML = `alvo &lt;<b>${G.alvo}</b> · atenção ${G.atencao} · crítico ${G.critico} ppm`;
+  $('gasExpl').textContent = G.explicacao;
+  badge($('bdGas'), G.saude, G.estado);
+  $('slGas').style.background = COR[G.saude];
+
+  // atuadores
+  const A=s.atuadores;
+  setAtu('Exa', A.exaustor); setAtu('Aqu', A.aquecedor);
+  setAtu('Lamp', A.lampada); setAtu('Cor', A.cortina);
+
+  // animações do galpão
+  fanSpeed = A.exaustor * 0.18;                                   // velocidade do exaustor
+  $('lampHalo').setAttribute('opacity', (A.lampada/100*0.9).toFixed(2));
+  $('lampBulb').setAttribute('fill', A.lampada>5 ? '#fde047':'#5b6678');
+  $('heatHalo').setAttribute('opacity', (A.aquecedor/100*0.9).toFixed(2));
+  ['coil1','coil2','coil3'].forEach(c=>$(c).setAttribute('stroke', A.aquecedor>5?'#ff6a3d':'#5a3322'));
+  // cortina: abre = painel encolhe
+  const fechado = 120*(1 - A.cortina/100);
+  $('curtainPanel').setAttribute('height', Math.max(2,fechado).toFixed(0));
+  // nuvem NH3 proporcional ao ppm
+  desenharNH3(G.ppm, G.saude);
+  // aves: pintinho se fase 1
+  $('birds').textContent = s.faixa===1 ? '🐤🐤🐤🐤' : (s.faixa===3 ? '🐔🐔🐔🐔':'🐔🐤🐔🐔');
+
+  // supervisor
+  $('modoTermico').textContent = {frio:'❄️ FRIO',calor:'🔥 CALOR',neutro:'✅ NEUTRO'}[s.supervisor.modo_termico]||s.supervisor.modo_termico;
+  const r=$('reasons'); r.innerHTML='';
+  s.supervisor.conflitos.forEach(c=>add(r,'conf',c));
+  s.supervisor.sinergias.forEach(c=>add(r,'sin',c));
+  if(!s.supervisor.conflitos.length && !s.supervisor.sinergias.length)
+    add(r,'ok','Sem conflitos entre eixos — cada atuador resolve seu próprio eixo.');
+
+  // banner de alerta
+  const ab=$('alerta');
+  if(s.supervisor.alerta_global){ ab.style.display='flex';
+    $('alertaTxt').textContent = montarAlerta(s); } else ab.style.display='none';
+
+  // charts
+  chartLuz(s.historico, L.alvo);
+  chartClima(s.historico, C.itu_conforto, C.itu_critico);
+  chartGas(s.historico);
+}
+
+function montarAlerta(s){
+  const p=[]; const G=s.eixos.gas, C=s.eixos.clima;
+  if(G.estado==='critico') p.push(`NH₃ ${G.ppm.toFixed(1)} ppm CRÍTICO`);
+  if(C.status==='calor_critico') p.push(`ITU ${C.itu} estresse térmico`);
+  if(s.supervisor.conflitos.some(x=>x.includes('CONFLITO'))) p.push('conflito amônia×frio em arbitragem');
+  return p.join(' · ') || 'Condição crítica';
+}
+function add(parent, cls, txt){ const d=document.createElement('div'); d.className='reason '+cls; d.textContent=txt; parent.appendChild(d); }
+function setAtu(k,v){ $('v'+k).textContent=v.toFixed(0)+'%'; const b=$('b'+k); b.style.width=v+'%'; }
+
+function desenharNH3(ppm, saude){
+  const g=$('nh3Cloud'); g.innerHTML='';
+  const n = Math.min(26, Math.round(ppm));
+  const col = COR[saude];
+  for(let i=0;i<n;i++){
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    const x=60+Math.random()*520, y=70+Math.random()*150;
+    c.setAttribute('cx',x); c.setAttribute('cy',y);
+    c.setAttribute('r',(2+Math.random()*4).toFixed(1));
+    c.setAttribute('fill',col); c.setAttribute('opacity',0.18+Math.random()*0.25);
+    g.appendChild(c);
+  }
+}
+
+// ---- charts (canvas puro) ----
+function prep(cv){ const dpr=window.devicePixelRatio||1; const w=cv.clientWidth,h=cv.clientHeight;
+  cv.width=w*dpr; cv.height=h*dpr; const x=cv.getContext('2d'); x.scale(dpr,dpr);
+  x.clearRect(0,0,w,h); return {x,w,h}; }
+function linha(x,data,key,w,h,min,max,color,dash){
+  if(data.length<2) return;
+  x.strokeStyle=color; x.lineWidth=1.8; x.setLineDash(dash||[]); x.beginPath();
+  data.forEach((d,i)=>{ const px=i/(data.length-1)*w; const v=(d[key]-min)/(max-min);
+    const py=h-6-v*(h-14); i?x.lineTo(px,py):x.moveTo(px,py); });
+  x.stroke(); x.setLineDash([]);
+}
+function href(x,w,h,v,min,max,color){ const py=h-6-((v-min)/(max-min))*(h-14);
+  x.strokeStyle=color;x.globalAlpha=.4;x.setLineDash([4,4]);x.beginPath();x.moveTo(0,py);x.lineTo(w,py);x.stroke();x.setLineDash([]);x.globalAlpha=1;}
+function chartLuz(d,alvo){ const {x,w,h}=prep($('chLuz')); const mx=Math.max(50,alvo*1.4,...d.map(p=>p.lux));
+  href(x,w,h,alvo,0,mx,'#eab308'); linha(x,d,'lux',w,h,0,mx,'#fde047'); }
+function chartClima(d,conf,crit){ const {x,w,h}=prep($('chClima'));
+  href(x,w,h,crit,40,90,'#ef4444'); href(x,w,h,conf,40,90,'#eab308');
+  linha(x,d,'itu',w,h,40,90,'#f97316');
+  // temp normalizada na mesma escala visual (0-40 -> map)
+  linha(x,d,'temp',w,h,0,40,'#38bdf8'); }
+function chartGas(d){ const {x,w,h}=prep($('chGas')); const mx=Math.max(30,...d.map(p=>p.nh3));
+  href(x,w,h,25,0,mx,'#ef4444'); href(x,w,h,20,0,mx,'#f97316'); href(x,w,h,10,0,mx,'#22c55e');
+  linha(x,d,'nh3',w,h,0,mx,'#34d399'); }
+</script>
+</body>
+</html>

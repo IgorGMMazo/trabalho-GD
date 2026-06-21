@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "author": "Igor - Gemeo Digital Granja",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp32", "top": 0, "left": 0, "attrs": {} },
+    { "type": "chip-bh1750", "id": "chip1", "top": 77.82, "left": 196.8, "attrs": {} },
+    { "type": "wokwi-dht22", "id": "dht1", "top": -86.1, "left": -120.6, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp32:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp32:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "chip1:VCC",  "esp32:3V3",   "red",    [ "h30", "v63", "h-220" ] ],
+    [ "chip1:GND",  "esp32:GND.1", "black",  [ "h20", "v40", "h-210" ] ],
+    [ "chip1:SDA",  "esp32:D21",   "green",  [ "h-50", "v-33", "h-200" ] ],
+    [ "chip1:SCL",  "esp32:D22",   "blue",   [ "h-40", "v-52", "h-190" ] ],
+    [ "chip1:ADDR", "esp32:GND.1", "yellow", [ "h40", "v63", "h-180" ] ],
+
+    [ "dht1:VCC", "esp32:3V3",   "red",    [ "v0" ] ],
+    [ "dht1:SDA", "esp32:D15",   "orange", [ "v0" ] ],
+    [ "dht1:GND", "esp32:GND.2", "black",  [ "v0" ] ]
+  ],
+  "dependencies": {}
+}

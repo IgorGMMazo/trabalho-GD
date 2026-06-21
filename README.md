@@ -1,84 +1,160 @@
-# Gêmeo Digital — Granja Avícola 🐔
+# 🐔 Gêmeo Digital — Granja Avícola (3 eixos + supervisor de bem-estar)
 
-Sistema de **gêmeo digital** que monitora o ambiente de uma granja e atua para
-mantê-lo no equilíbrio homeostático ideal para as aves. Duas vertentes:
+Gêmeo digital **reativo** de uma granja que monitora e atua sobre **três eixos
+ambientais ao mesmo tempo**, sobre um **ambiente físico compartilhado**, com um
+**supervisor que arbitra os conflitos entre os atuadores** segundo uma hierarquia
+de **bem-estar animal**.
 
-| Vertente | Sensor | Atuador | Cérebro |
-|----------|--------|---------|---------|
-| **Luminosidade** | LDR / BH1750 (lux) | Dimmer da lâmpada | [`control.py`](control.py) |
-| **Gases (NH₃)** | MQ-135 / MQ-137 (ppm) | Exaustor | [`gas_control.py`](gas_control.py) |
+| Eixo | Sensor (Wokwi/ESP32) | Atuador | Limiares |
+|------|----------------------|---------|----------|
+| **Luz** | BH1750 (lux) | Lâmpada (dimmer) | alvo por fase de vida |
+| **Clima** | DHT22 (temp/umid → ITU) | Aquecedor + cortina/ventilação | curva de aquecimento; ITU 74/78 |
+| **Gases** | MQ-135 (NH₃ ppm) | Exaustor | 10 / 20 / 25 ppm |
 
-Todos os componentes conversam por **MQTT** (broker `broker.hivemq.com`),
-fechando o ciclo **sensor → cérebro → atuador → dashboard**.
+> Roda **100% offline** — só com a biblioteca padrão do Python. Sem internet, sem
+> broker MQTT, sem placa. O dashboard é um gêmeo digital animado servido por
+> HTTP + SSE local.
 
-```
-  ┌──────────────┐   granja/sensor/gas/1   ┌────────────────┐
-  │ ESP32 (Wokwi)│ ──────────────────────► │  gas_control.py │
-  │  MQ-135 sim  │                          │  (controlador)  │
-  └──────────────┘ ◄────────────────────── └────────────────┘
-        ▲           granja/atuador/exaustor/1        │
-        │ LED exaustor + LED alerta                  │ granja/status/gas/1
-        │                                            ▼
-        └───────────── feedback loop ──────► dashboard.html (tempo real)
+```bash
+python run_twin.py            # abre http://127.0.0.1:8000 no navegador
+python run_twin.py --faixa 1  # fase de chegada (pintinhos)
 ```
 
 ---
 
-## Vertente de GASES — passo a passo da apresentação
+## Por que isso não são três sistemas separados
 
-### 0. Instalar dependências (uma vez)
-```bash
-pip install -r requirements.txt
-```
+Os três eixos **compartilham o mesmo ar do galpão**. Um atuador acionado para
+resolver **um** problema afeta os **outros**:
 
-### 1. Subir o cérebro (controlador do exaustor)
-```bash
-python gas_control.py
-```
-Calcula a potência do exaustor a partir do NH₃ e publica os comandos/estado.
+| Atuador | Resolve | Efeito cruzado |
+|---------|---------|----------------|
+| **Exaustor** | ↓ NH₃ (gases) | ↓ temperatura e ↓ umidade → **gela pintinhos** |
+| **Aquecedor** | frio (clima) | ↑ volatilização de NH₃ da cama → **piora os gases** |
+| **Cortina/ventilação** | calor (clima) | = exaustor: resfria e limpa o ar |
+| **Lâmpada** | luz | adiciona calor (relevante em incandescente) |
 
-### 2. Abrir o dashboard
-Abra **`dashboard.html`** no navegador (duplo clique). Ele assina o broker
-por WebSocket e mostra ppm, potência do exaustor, estado e gráfico ao vivo.
-*(Não precisa de servidor — é HTML puro.)*
+O **exaustor é um recurso ÚNICO** disputado pelos eixos gases e clima, e
+**aquecedor × exaustor são fisicamente opostos**. Por isso existe o **supervisor**.
 
-### 3. Gerar leituras de NH₃ — escolha **A** ou **B**
+### Hierarquia de bem-estar do supervisor
+1. **Risco térmico letal** (frio em pintinhos / calor extremo)
+2. **Amônia tóxica** (NH₃ ≥ 25 ppm)
+3. **Conforto lumínico**
 
-**A) Wokwi (principal):** abra o projeto em `wokwi/` (veja
-[`wokwi/README.md`](wokwi/README.md)), dê Play e **gire o potenciômetro**
-para simular o acúmulo de amônia.
-
-**B) Fallback sintético (se a rede do Wokwi falhar ao vivo):**
-```bash
-python gas_sim.py            # ciclo automático 5↔30 ppm
-python gas_sim.py --manual   # você digita o ppm no teclado
-```
-
-### Roteiro sugerido para a banca
-1. NH₃ baixo (~8 ppm) → estado 🟢 **bom**, exaustor em ventilação base (15%).
-2. Subir para ~18 ppm → 🔵 **elevado**, exaustor sobe proporcionalmente.
-3. Passar de **25 ppm** → 🔴 **crítico**: banner de ALERTA, exaustor 100%,
-   LED vermelho do ESP32 acende. **Aqui se mostra o feedback loop.**
-4. Baixar de novo → o sistema relaxa o exaustor sozinho.
+**Regra de ouro:** nunca resfriar além do *teto seguro da fase* para combater
+amônia — em vez disso, ventila o tolerável e **compensa com o aquecedor**,
+registrando o conflito. No calor, ventilar **resolve dois eixos** (sinergia).
 
 ---
 
-## Limiares de amônia (base zootécnica)
+## Arquitetura
 
-| NH₃ (ppm) | Estado | Ação |
-|-----------|--------|------|
-| < 10 | 🟢 bom | ventilação base (15%) |
-| 10–20 | 🔵 elevado | exaustor proporcional |
-| 20–25 | 🟡 atenção | exaustor alto |
-| ≥ 25 | 🔴 crítico | exaustor 100% + ALERTA (lesão respiratória) |
+```
+        ┌──────────── AMBIENTE FÍSICO COMPARTILHADO (galpão) ────────────┐
+        │      temperatura · umidade · NH₃ · luz natural  (EDOs)         │
+        └──────▲──────────────────────────────────────────────▲─────────┘
+               │ lê                                    aplica  │
+        ┌──────┴─────┐   ┌──────────────┐   ┌──────────────────┴─────────┐
+        │  SENSORES  │ ─►│ CONTROLADORES│ ─►│        SUPERVISOR           │
+        │ lux·clima  │   │  1 por eixo  │   │ arbitra conflitos por       │
+        │   ·gás     │   │  (P + dead)  │   │ bem-estar → comanda tudo    │
+        └────────────┘   └──────────────┘   └─────────────────────────────┘
+```
 
-Ajuste os limiares e ganhos em `Config` no topo de
-[`gas_control.py`](gas_control.py).
+```
+gemeo_digital/
+├── config.py       # fases de vida, limiares zootécnicos, física do galpão
+├── environment.py  # ambiente físico compartilhado (acoplamentos) + ITU
+├── sensors.py      # réplica do firmware: BH1750, DHT22, MQ-135 (com ruído)
+├── controllers.py  # um controlador P por eixo (propõem demandas)
+├── supervisor.py   # arbitragem de conflitos por hierarquia de bem-estar
+├── twin.py         # orquestrador + motor de cenários cíclicos
+└── server.py       # servidor HTTP + SSE (stdlib) que serve o dashboard
+dashboard/index.html # interface do gêmeo digital (SVG/Canvas animados)
+hardware_wokwi/      # firmware .ino e diagramas de referência (ESP32)
+tests/               # 22 testes (física, controladores e conflitos)
+slides/              # apresentação (.pptx) + gerador
+run_twin.py          # ponto de entrada
+```
 
-## Tópicos MQTT
+---
 
-| Tópico | Direção | Conteúdo |
-|--------|---------|----------|
-| `granja/sensor/gas/{id}`   | ESP32/sim → cérebro | `{"ppm": 18.4}` |
-| `granja/atuador/exaustor/{id}` | cérebro → ESP32 | `{"exaustor_pct": 72, "alerta": false}` |
-| `granja/status/gas/{id}`   | cérebro → dashboard | estado completo |
+## Cenários (cíclicos e automáticos)
+
+O dashboard percorre — e você pode selecionar manualmente:
+
+1. **Operação normal** — tudo em conforto.
+2. **Acúmulo de amônia** — cama saturada; exaustor reage.
+3. **Onda de calor** — ITU sobe; ventilação máxima + sinergia com gases.
+4. **Noite fria** — aquecedor protege as aves.
+5. **Conflito crítico: frio + amônia tóxica** — o supervisor arbitra para
+   **não matar de frio** (exaustor limitado + aquecedor compensando).
+
+Tudo isso para as 3 fases de vida (chegada / crescimento / final).
+
+---
+
+## Testes
+
+```bash
+pip install pytest        # opcional
+python -m pytest          # 22 testes
+```
+
+Cobrem a física (ventilação resfria, aquecedor aquece e eleva NH₃…), os
+controladores e — o mais importante — a **arbitragem de conflitos** do supervisor.
+
+---
+
+## Análise crítica — decisões e correções feitas no caminho
+
+- **Conflito frio×amônia é um trade-off real, não mágica:** na fase 1 a
+  ventilação sozinha **não** resolve a amônia sem congelar os pintinhos. O gêmeo
+  evidencia que, na chegada, o controle de NH₃ depende de **manejo de cama**.
+- **ITU não se aplica a pintinhos:** a 32 °C (conforto do pinto) a fórmula de
+  Thom já daria “crítico”, o que faria o sistema **resfriar a temperatura que o
+  pinto precisa**. Corrigido: na fase 1 o clima é guiado pela **banda térmica**, e
+  o ITU 74/78 só vale para as fases 2–3 (aves crescidas).
+- **Bug do projeto original corrigido:** a fase final tinha `lux_alvo = 90` com
+  `min/max` invertidos no `control.py`. Frangos de corte são mantidos em luz baixa
+  (5–20 lux) na fase final — corrigido para ~20 lux.
+- **Limitação assumida:** o modelo físico é de 1ª ordem com constantes calibradas
+  empiricamente, **não validadas com dados reais**.
+
+---
+
+## Slides
+
+`slides/gemeo_digital_granja.pptx` (25 slides) cobre todos os tópicos exigidos,
+com ênfase em **análise crítica**. Para regenerar:
+
+```bash
+pip install python-pptx
+python slides/gerar_slides.py
+```
+
+---
+
+## Sem banco de dados (por enquanto)
+
+O gêmeo é **reativo** ao estado instantâneo — decide a cada ciclo a partir das
+leituras atuais, sem histórico persistido. **Análise preditiva** (séries
+temporais / ML, controle preditivo) é **trabalho futuro**.
+
+---
+
+## Hardware real (opcional)
+
+Os firmwares `.ino` e diagramas em `hardware_wokwi/` são a referência ESP32/Wokwi.
+Os payloads e tópicos MQTT (`granja/sensor/...`, `granja/atuador/...`) são os
+mesmos do hardware, então um modo híbrido (Python ↔ Wokwi via MQTT) é uma extensão
+direta — mantida como trabalho futuro.
+
+---
+
+### Projeto legado (vertentes originais)
+
+Os arquivos `control.py`, `gas_control.py`, `gas_sim.py`, `dashboard.html` e
+`wokwi/` são as **vertentes originais** (luz e gases, via MQTT) que serviram de
+base. O gêmeo de 3 eixos descrito acima é a evolução integrada delas.
